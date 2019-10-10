@@ -1,0 +1,91 @@
+#!/bin/bash
+# install new vm images with cloud-init
+
+err() {
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $@" >&2
+}
+
+help() {
+  echo "options are (all but h needed):
+    h) prints this message
+    N) name: tmp (if the name is >tmp< vmbuilder will remove the vm image between runs)
+    a) ip address: a.b.c.d
+    g) gateway: a.b.c.e
+    n) netmask: cidr form eg. 24"
+    exit 0
+}
+
+# setup variables, static, generated and via getopts
+name=''
+ip_address=''
+gateway=''
+netmask=''
+while getopts 'hN:a:g:n:' flag; do
+  case "${flag}" in
+    h) help ;;
+    N) name="${OPTARG}" ;;
+    a) ip_address="${OPTARG}" ;;
+    g) gateway="${OPTARG}" ;;
+    n) netmask="${OPTARG}" ;;
+    *) err "Unexpected option ${flag}" ;;
+  esac
+done
+
+# do some preflight checks, we need all variables set, also download mo mustache template engine if it's not available
+if [[ -z "${name}" ]] || [[ -z "${ip_address}" ]] || [[ -z "${gateway}" ]] || [[ -z "${netmask}" ]]; then
+  err "not all optargs are filled, can not continue"
+  exit 1
+fi
+if [[ ! -f "./mo" ]]; then
+  err "downloading mo template engine"
+  curl -sSL https://git.io/get-mo -o mo
+  chmod +x ./mo
+fi
+
+# generate random instance-id and mac address
+instance_id=$(uuidgen)
+mac_address=$(hexdump -n3 -e'1/3 "52:54:00" 3/1 ":%02x"' /dev/urandom; echo "")
+
+# render all templates for the cloud-init config, copy fresh ubuntu cloud image and generate the cloud-init seed iso
+prepare() {
+  _instance_id=${instance_id} _hostname=${name} ./mo ./meta-data.i > meta-data
+  _mac_address=${mac_address} _ip_address=${ip_address} _netmask=${netmask} _gateway=${gateway} ./mo ./network-config.i > network-config
+  cp user-data.i user-data
+
+  if [[ "xtmpx" == "x${name}x" ]]; then
+    sudo rm "${name}.img"
+  fi
+  cp ubuntu-18.04-server-cloudimg-amd64.img "${name}.img"
+
+  genisoimage -output templateseed.iso -volid cidata -joliet -rock user-data meta-data network-config
+}
+
+# run vm with kvm for installation with cloud-init
+run_vm() {
+  sudo kvm -m 512 -smp 1 -hda "${name}.img" -hdb templateseed.iso -device e1000,netdev=net0,mac=${mac_address} -netdev tap,id=net0,script=./qemu-ifup -nographic
+}
+
+copy_vm() {
+ err "hier wird die VM mal an ihr ziel kopiert"
+}
+
+define_vm() {
+ err "bin noch zu faul hier mit xml fuer libvirt zu hantieren"
+}
+
+cleanup() {
+  rm user-data
+  rm network-config
+  rm meta-data
+  rm templateseed.iso
+}
+
+main() {
+  prepare
+  run_vm
+  copy_vm
+  define_vm
+  cleanup
+}
+
+main
