@@ -48,9 +48,9 @@ mac_address=$(hexdump -n3 -e'1/3 "52:54:00" 3/1 ":%02x"' /dev/urandom; echo "")
 
 # render all templates for the cloud-init config, copy fresh ubuntu cloud image and generate the cloud-init seed iso
 prepare() {
-  _instance_id=${instance_id} _hostname=${name} ./mo ./meta-data.i > meta-data
-  _mac_address=${mac_address} _ip_address=${ip_address} _netmask=${netmask} _gateway=${gateway} ./mo ./network-config.i > network-config
-  cp user-data.i user-data
+  _instance_id=${instance_id} _hostname=${name} ./mo ./meta-data.mo > meta-data
+  _mac_address=${mac_address} _ip_address=${ip_address} _netmask=${netmask} _gateway=${gateway} ./mo ./network-config.mo > network-config
+  ./mo user-data.mo > user-data
 
   if [[ "xtmpx" == "x${name}x" ]]; then
     sudo rm "${name}.img"
